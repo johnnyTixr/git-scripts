@@ -369,11 +369,23 @@ handle_add() {
 	worktree_base="${parent_dir}/${repo_name}.worktrees"
 	worktree_path="${worktree_base}/${new_branch_name}"
 
+	# Check if the branch already exists
+	local branch_exists=false
+	if git show-ref --verify --quiet "refs/heads/$new_branch_name"; then
+		branch_exists=true
+	fi
+
 	# Show summary and confirm
 	echo
 	echo -e "${CYAN}Worktree Summary:${NC}"
-	echo -e "  ${GRAY}Base branch:${NC}  $base_branch"
-	echo -e "  ${GRAY}New branch:${NC}   $new_branch_name"
+	if [ "$branch_exists" = true ]; then
+		echo -e "  ${GRAY}Action:${NC}       Checkout existing branch"
+		echo -e "  ${GRAY}Branch:${NC}       $new_branch_name ${YELLOW}(already exists)${NC}"
+	else
+		echo -e "  ${GRAY}Action:${NC}       Create new branch"
+		echo -e "  ${GRAY}Base branch:${NC}  $base_branch"
+		echo -e "  ${GRAY}New branch:${NC}   $new_branch_name"
+	fi
 	echo -e "  ${GRAY}Path:${NC}         $worktree_path"
 	echo
 
@@ -387,9 +399,14 @@ handle_add() {
 	# Create the worktree directory if it doesn't exist
 	mkdir -p "$worktree_base"
 
-	# Create the worktree with new branch
-	echo -e "${YELLOW}Creating worktree with new branch '$new_branch_name' based on '$base_branch'...${NC}"
-	git worktree add -b "$new_branch_name" "$worktree_path" "$base_branch"
+	# Create the worktree with or without creating a new branch
+	if [ "$branch_exists" = true ]; then
+		echo -e "${YELLOW}Creating worktree for existing branch '$new_branch_name'...${NC}"
+		git worktree add "$worktree_path" "$new_branch_name"
+	else
+		echo -e "${YELLOW}Creating worktree with new branch '$new_branch_name' based on '$base_branch'...${NC}"
+		git worktree add -b "$new_branch_name" "$worktree_path" "$base_branch"
+	fi
 
 	echo -e "${GREEN}Worktree created successfully at: $worktree_path${NC}"
 
