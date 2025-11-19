@@ -86,45 +86,17 @@ read_key() {
 	fi
 }
 
-# Prompt helper that detects ESC and can require non-empty input
+# Prompt helper that can require non-empty input
 # Usage: ask "Prompt: " varname [required]
-# Returns: 0 on success, 1 if empty when required, 2 on ESC
+# Returns: 0 on success, 1 if empty when required
 ask() {
 	local prompt="$1"
 	local __var="$2"
 	local required="$3"
-	local ch rest answer
+	local answer
 
-	# Print prompt without newline
-	printf "%s" "$prompt"
-
-	# Disable echo temporarily to read the very first character
-	stty -echo 2>/dev/null || true
-	IFS= read -r -n 1 ch || ch=""
-	stty echo 2>/dev/null || true
-
-	# If ESC, consume any trailing escape bytes and return 2
-	if [[ "$ch" == $'\x1b' ]]; then
-		# Consume quickly any remaining bytes in stdin that are part of escape
-		while IFS= read -r -n 1 -t 0.01 rest 2>/dev/null; do
-			:
-		done
-		printf "\n\n"
-		return 2
-	fi
-
-	# If first char was newline (user pressed Enter immediately)
-	if [ -z "$ch" ]; then
-		answer=""
-		printf "\n"
-	else
-		# Echo the first character (it was read with echo off)
-		printf "%s" "$ch"
-		# Read rest of the line until newline
-		IFS= read -r rest || rest=""
-		answer="$ch$rest"
-		printf "\n"
-	fi
+	# Use read -e for readline support (enables paste with Command-V)
+	read -e -p "$prompt" answer
 
 	# If required and empty
 	if [ "$required" = "true" ] && [ -z "$answer" ]; then
@@ -363,9 +335,7 @@ handle_add() {
 		1) base_branch="master" ;;
 		2)
 			ask "Enter branch name: " base_branch true
-			if [ $? -eq 2 ]; then
-				return 1
-			elif [ $? -ne 0 ]; then
+			if [ $? -ne 0 ]; then
 				echo -e "${RED}Error: Branch name is required${NC}"
 				return 1
 			fi
@@ -374,9 +344,7 @@ handle_add() {
 
 	# Get new branch name for worktree
 	ask "Enter new branch name for worktree: " new_branch_name true
-	if [ $? -eq 2 ]; then
-		return 1
-	elif [ $? -ne 0 ]; then
+	if [ $? -ne 0 ]; then
 		echo -e "${RED}Error: Branch name is required${NC}"
 		return 1
 	fi
@@ -410,12 +378,10 @@ handle_add() {
 
 	# Offer to launch VS Code in the new worktree
 	ask "Launch new VS Code window in the worktree (Y/n)? " launch_vscode false
-	if [ $? -ne 2 ]; then
-		launch_vscode="${launch_vscode:-y}"
-		if [[ -z "$launch_vscode" || "$launch_vscode" =~ ^[Yy]$ ]]; then
-			target_dir=$(get_worktree_target_dir "$worktree_path")
-			open_in_vscode "$target_dir"
-		fi
+	launch_vscode="${launch_vscode:-y}"
+	if [[ -z "$launch_vscode" || "$launch_vscode" =~ ^[Yy]$ ]]; then
+		target_dir=$(get_worktree_target_dir "$worktree_path")
+		open_in_vscode "$target_dir"
 	fi
 
 	return 0
@@ -465,11 +431,6 @@ handle_list() {
 	chosen_path="${WT_PATHS[$MENU_RESULT]}"
 
 	ask "Open selected worktree in a new VS Code window (Y/n)? " launch_vscode false
-	if [ $? -eq 2 ]; then
-		echo -e "${GRAY}Cancelled — returning to menu...${NC}"
-		sleep 0.2
-		return 0
-	fi
 
 	launch_vscode="${launch_vscode:-y}"
 	if [[ -z "$launch_vscode" || "$launch_vscode" =~ ^[Yy]$ ]]; then
@@ -571,11 +532,6 @@ handle_remove() {
 		fi
 
 		ask "Still delete this worktree? (y/N): " confirm1 false
-		if [ $? -eq 2 ]; then
-			echo -e "${GRAY}Cancelled — returning to menu...${NC}"
-			sleep 0.2
-			return 0
-		fi
 		if [[ ! "$confirm1" =~ ^[Yy]$ ]]; then
 			echo -e "${GRAY}Operation cancelled${NC}"
 			return 0
@@ -583,11 +539,6 @@ handle_remove() {
 
 		# Final warning
 		ask "Are you ABSOLUTELY sure you want to delete this worktree? This cannot be undone (y/N): " confirm2 false
-		if [ $? -eq 2 ]; then
-			echo -e "${GRAY}Cancelled — returning to menu...${NC}"
-			sleep 0.2
-			return 0
-		fi
 		if [[ ! "$confirm2" =~ ^[Yy]$ ]]; then
 			echo -e "${GRAY}Operation cancelled${NC}"
 			return 0
@@ -601,11 +552,6 @@ handle_remove() {
 		# Clean and pushed
 		echo -e "${GREEN}This worktree appears committed and pushed. Safe to delete.${NC}"
 		ask "Delete this worktree? (y/N): " confirm_safe false
-		if [ $? -eq 2 ]; then
-			echo -e "${GRAY}Cancelled — returning to menu...${NC}"
-			sleep 0.2
-			return 0
-		fi
 		if [[ "$confirm_safe" =~ ^[Yy]$ ]]; then
 			echo -e "${YELLOW}Removing worktree...${NC}"
 			git worktree remove "$target_path"
@@ -626,9 +572,6 @@ handle_prune() {
 
 	echo -e "${YELLOW}This will clean up worktree administrative files for removed worktrees.${NC}"
 	ask "Continue? (y/N): " confirm true
-	if [ $? -eq 2 ]; then
-		return 1
-	fi
 	if [ $? -ne 0 ]; then
 		confirm="n"
 	fi
@@ -682,9 +625,6 @@ handle_lock() {
 	target_branch="${WT_BRANCHES[$MENU_RESULT]}"
 
 	ask "Enter lock reason (optional): " reason false
-	if [ $? -eq 2 ]; then
-		return 1
-	fi
 	if [ $? -ne 0 ]; then
 		reason=""
 	fi
@@ -786,11 +726,6 @@ handle_unlock() {
 	fi
 
 	ask "Unlock this worktree? (y/N): " confirm_unlock false
-	if [ $? -eq 2 ]; then
-		echo -e "${GRAY}Cancelled — returning to menu...${NC}"
-		sleep 0.2
-		return 0
-	fi
 	if [[ "$confirm_unlock" =~ ^[Yy]$ ]]; then
 		git worktree unlock "$target_path"
 		echo -e "${GREEN}Worktree unlocked successfully${NC}"
@@ -838,9 +773,6 @@ handle_move() {
 	current_path="${WT_PATHS[$MENU_RESULT]}"
 
 	ask "Enter new worktree path: " new_path true
-	if [ $? -eq 2 ]; then
-		return 1
-	fi
 	if [ $? -ne 0 ]; then
 		echo -e "${RED}Error: New path is required${NC}"
 		return 1
