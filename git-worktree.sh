@@ -206,11 +206,13 @@ display_simple_item() {
 # ============================================================================
 
 # Normalize branch name to be valid git branch name
+# Preserves uppercase JIRA ticket IDs (e.g., TXP-1234)
 normalize_branch_name() {
 	local input="$1"
+	local normalized="$input"
 
-	# Convert to lowercase and replace spaces with hyphens
-	local normalized=$(echo "$input" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+	# Replace spaces with hyphens
+	normalized=$(echo "$normalized" | tr ' ' '-')
 
 	# Remove leading/trailing hyphens
 	normalized=$(echo "$normalized" | sed 's/^-*//g' | sed 's/-*$//g')
@@ -219,7 +221,8 @@ normalize_branch_name() {
 	normalized=$(echo "$normalized" | sed 's/-\+/-/g')
 
 	# Remove invalid characters (keep only alphanumeric, hyphens, underscores, dots, slashes)
-	normalized=$(echo "$normalized" | sed 's/[^a-z0-9._/-]//g')
+	# This preserves both uppercase and lowercase letters
+	normalized=$(echo "$normalized" | sed 's/[^a-zA-Z0-9._/-]//g')
 
 	# Ensure it doesn't end with .lock
 	if [[ "$normalized" == *.lock ]]; then
@@ -366,12 +369,26 @@ handle_add() {
 	worktree_base="${parent_dir}/${repo_name}.worktrees"
 	worktree_path="${worktree_base}/${new_branch_name}"
 
+	# Show summary and confirm
+	echo
+	echo -e "${CYAN}Worktree Summary:${NC}"
+	echo -e "  ${GRAY}Base branch:${NC}  $base_branch"
+	echo -e "  ${GRAY}New branch:${NC}   $new_branch_name"
+	echo -e "  ${GRAY}Path:${NC}         $worktree_path"
+	echo
+
+	ask "Create this worktree? (Y/n): " confirm false
+	confirm="${confirm:-y}"
+	if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+		echo -e "${GRAY}Operation cancelled${NC}"
+		return 0
+	fi
+
 	# Create the worktree directory if it doesn't exist
 	mkdir -p "$worktree_base"
 
 	# Create the worktree with new branch
 	echo -e "${YELLOW}Creating worktree with new branch '$new_branch_name' based on '$base_branch'...${NC}"
-	echo -e "${GRAY}Worktree path: $worktree_path${NC}"
 	git worktree add -b "$new_branch_name" "$worktree_path" "$base_branch"
 
 	echo -e "${GREEN}Worktree created successfully at: $worktree_path${NC}"
